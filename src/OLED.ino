@@ -16,6 +16,7 @@
 
 #include <Wire.h>
 #include <Arduino.h>
+#include <MIDI.h>
 
 const byte OLED = 1; // Turn on/off the OLED [1,0]
 
@@ -42,13 +43,9 @@ unsigned long measurement_t2;
 
 float sipm_voltage = 0;
 long int muon_count = 0L; // A tally of the number of muon counts observed
-float last_sipm_voltage = 0;
 float temperatureC;
 
-byte waiting_for_interupt = 0;
-byte SLAVE;
-byte MASTER;
-byte keep_pulse = 0;
+MIDI_CREATE_DEFAULT_INSTANCE();
 
 void setup()
 {
@@ -56,31 +53,10 @@ void setup()
     ADCSRA &= ~(bit(ADPS0) | bit(ADPS1) | bit(ADPS2)); // clear prescaler bits
     ADCSRA |= bit(ADPS0) | bit(ADPS1);                 // Set prescaler to 8
     Serial.begin(9600);
-
+    MIDI.begin(MIDI_CHANNEL_OMNI);
     pinMode(3, OUTPUT);
-    pinMode(6, INPUT);
-    if (digitalRead(6) == HIGH)
-    {
-        SLAVE = 1;
-        MASTER = 0;
-        digitalWrite(3, HIGH);
-        delay(1000);
-    }
-
-    else
-    {
-        delay(10);
-        MASTER = 1;
-        SLAVE = 0;
-        pinMode(6, OUTPUT);
-        digitalWrite(6, HIGH);
-    }
 
     digitalWrite(3, LOW);
-    if (MASTER == 1)
-    {
-        digitalWrite(6, LOW);
-    }
 
     Serial.println(F("##########################################################################################"));
     Serial.println(F("### CosmicWatch: The Desktop Muon Detector"));
@@ -102,75 +78,16 @@ void loop()
             // Make a measurement of the pulse amplitude
             int adc = analogRead(A0);
 
-            // If Master, send a signal to the Slave
-            if (MASTER == 1)
-            {
-                digitalWrite(6, HIGH);
-                muon_count++;
-                keep_pulse = 1;
-            }
+measureTemperature();
 
-            // Wait for ~8us
-            analogRead(A3);
-
-            // If Slave, check for signal from Master
-
-            if (SLAVE == 1)
-            {
-                if (digitalRead(6) == HIGH)
-                {
-                    keep_pulse = 1;
-                    muon_count++;
-                }
-            }
-
-            // Wait for ~8us
-            analogRead(A3);
-
-            // If Master, stop signalling the Slave
-            if (MASTER == 1)
-            {
-                digitalWrite(6, LOW);
-            }
-
-            // Measure the temperature, voltage reference is currently set to 3.3V
-            temperatureC = (((analogRead(A3) + analogRead(A3) + analogRead(A3)) / 3. * (3300. / 1024)) - 500.) / 10.;
-
-            // Measure deadtime
-            measurement_deadtime = total_deadtime;
-            time_stamp = millis() - start_time;
-
-            // If you are within 15 miliseconds away from updating the OLED screen, we'll let if finish
-            if ((interrupt_timer + 1000 - millis()) < 15)
-            {
-                waiting_t1 = millis();
-                waiting_for_interupt = 1;
-                delay(30);
-                waiting_for_interupt = 0;
-            }
+            measureDeadTime();
 
             measurement_t1 = micros();
 
-            if (MASTER == 1)
-            {
-                analogWrite(3, LED_BRIGHTNESS);
-                sipm_voltage = get_sipm_voltage(adc);
-                last_sipm_voltage = sipm_voltage;
-                Serial.println((String)muon_count + " " + time_stamp + " " + adc + " " + sipm_voltage + " " + measurement_deadtime + " " + temperatureC);
-            }
-
-            if (SLAVE == 1)
-            {
-                if (keep_pulse == 1)
-                {
-                    analogWrite(3, LED_BRIGHTNESS);
-                    sipm_voltage = get_sipm_voltage(adc);
-                    last_sipm_voltage = sipm_voltage;
-                    Serial.println((String)muon_count + " " + time_stamp + " " + adc + " " + sipm_voltage + " " + measurement_deadtime + " " + temperatureC);
-                }
-            }
-
-            keep_pulse = 0;
+            analogWrite(3, LED_BRIGHTNESS);
+            sipm_voltage = get_sipm_voltage(adc);
+            Serial.println((String)muon_count + " " + time_stamp + " " + adc + " " + sipm_voltage + " " + measurement_deadtime + " " + temperatureC);
+            MIDI.sendNoteOn((int)sipm_voltage*127, 127, 1);
             digitalWrite(3, LOW);
             while (analogRead(A0) > RESET_THRESHOLD)
             {
@@ -179,6 +96,22 @@ void loop()
             total_deadtime += (micros() - measurement_t1) / 1000.;
         }
     }
+}
+
+void measureTemperature()
+{
+            // Wait for ~8us
+            analogRead(A3);
+
+            // Measure the temperature, voltage reference is currently set to 3.3V
+            temperatureC = (((analogRead(A3) + analogRead(A3) + analogRead(A3)) / 3. * (3300. / 1024)) - 500.) / 10.;
+}
+
+void measureDeadTime()
+{
+    // Measure deadtime
+    measurement_deadtime = total_deadtime;
+    time_stamp = millis() - start_time;
 }
 
 // This function converts the measured ADC value to a SiPM voltage via the calibration array
