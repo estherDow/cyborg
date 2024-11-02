@@ -16,6 +16,7 @@
 
 #include <Wire.h>
 #include <Arduino.h>
+#include <MIDI.h>
 
 const byte OLED = 1; // Turn on/off the OLED [1,0]
 
@@ -42,8 +43,9 @@ unsigned long measurement_t2;
 
 float sipm_voltage = 0;
 long int muon_count = 0L; // A tally of the number of muon counts observed
-float last_sipm_voltage = 0;
 float temperatureC;
+
+MIDI_CREATE_DEFAULT_INSTANCE();
 
 void setup()
 {
@@ -51,7 +53,7 @@ void setup()
     ADCSRA &= ~(bit(ADPS0) | bit(ADPS1) | bit(ADPS2)); // clear prescaler bits
     ADCSRA |= bit(ADPS0) | bit(ADPS1);                 // Set prescaler to 8
     Serial.begin(9600);
-
+    MIDI.begin(MIDI_CHANNEL_OMNI);
     pinMode(3, OUTPUT);
 
     digitalWrite(3, LOW);
@@ -90,9 +92,8 @@ void loop()
 
             analogWrite(3, LED_BRIGHTNESS);
             sipm_voltage = get_sipm_voltage(adc);
-            last_sipm_voltage = sipm_voltage;
             Serial.println((String)muon_count + " " + time_stamp + " " + adc + " " + sipm_voltage + " " + measurement_deadtime + " " + temperatureC);
-
+            MIDI.sendNoteOn((int)sipm_voltage*127, 127, 1);
             digitalWrite(3, LOW);
             while (analogRead(A0) > RESET_THRESHOLD)
             {
