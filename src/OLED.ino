@@ -53,7 +53,6 @@ void setup()
     Serial.begin(9600);
 
     pinMode(3, OUTPUT);
-    pinMode(6, INPUT);
 
     digitalWrite(3, LOW);
 
