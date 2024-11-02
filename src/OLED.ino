@@ -78,15 +78,9 @@ void loop()
             // Make a measurement of the pulse amplitude
             int adc = analogRead(A0);
 
-            // Wait for ~8us
-            analogRead(A3);
+measureTemperature();
 
-            // Measure the temperature, voltage reference is currently set to 3.3V
-            temperatureC = (((analogRead(A3) + analogRead(A3) + analogRead(A3)) / 3. * (3300. / 1024)) - 500.) / 10.;
-
-            // Measure deadtime
-            measurement_deadtime = total_deadtime;
-            time_stamp = millis() - start_time;
+            measureDeadTime();
 
             measurement_t1 = micros();
 
@@ -102,6 +96,22 @@ void loop()
             total_deadtime += (micros() - measurement_t1) / 1000.;
         }
     }
+}
+
+void measureTemperature()
+{
+            // Wait for ~8us
+            analogRead(A3);
+
+            // Measure the temperature, voltage reference is currently set to 3.3V
+            temperatureC = (((analogRead(A3) + analogRead(A3) + analogRead(A3)) / 3. * (3300. / 1024)) - 500.) / 10.;
+}
+
+void measureDeadTime()
+{
+    // Measure deadtime
+    measurement_deadtime = total_deadtime;
+    time_stamp = millis() - start_time;
 }
 
 // This function converts the measured ADC value to a SiPM voltage via the calibration array
