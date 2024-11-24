@@ -20,6 +20,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <EEPROM.h>
+#include <MIDI.h>
 
 const byte OLED = 1;                      // Turn on/off the OLED [1,0]
 
@@ -27,6 +28,7 @@ const int SIGNAL_THRESHOLD      = 50;    // Min threshold to trigger on. See cal
 const int RESET_THRESHOLD       = 25;    
 
 const int LED_BRIGHTNESS        = 255;    // Brightness of the LED [0,255]
+const byte MIDI_CHANNEL = 1;
 
 const long double calibration[] = {-9.085681659276021e-27, 4.6790804314609205e-23, -1.0317125207013292e-19,
   1.2741066484319192e-16, -9.684460759517656e-14, 4.6937937442284284e-11, -1.4553498837275352e-08,
@@ -41,6 +43,14 @@ const int cal_max = 1023;
 #define OLED_RESET 10
 Adafruit_SSD1306 display(OLED_RESET);
 
+//MIDI
+   using Transport = MIDI_NAMESPACE::SerialMIDI<SoftwareSerial>;
+   int rxPin = 18;
+   int txPin = 19;
+   SoftwareSerial mySerial = SoftwareSerial(rxPin, txPin);
+   Transport serialMIDI(mySerial);
+   MIDI_NAMESPACE::MidiInterface<Transport> MIDI((Transport&)serialMIDI);
+   
 //initialize variables
 char detector_name[40];
 
@@ -69,6 +79,7 @@ void setup() {
   ADCSRA &= ~(bit (ADPS0) | bit (ADPS1) | bit (ADPS2));  // clear prescaler bits
   ADCSRA |= bit (ADPS0) | bit (ADPS1);                   // Set prescaler to 8
   Serial.begin(9600);
+  MIDI.begin();
   
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);                               
   pinMode(3, OUTPUT);
@@ -118,7 +129,7 @@ void loop()
   while (1){
     if (analogRead(A0) > SIGNAL_THRESHOLD){ 
 
-      // Make a measurement of the pulse amplitude
+      // Make a measurement of the pulse amplitude 0 - 1023
       int adc = analogRead(A0);
       
       // If Master, send a signal to the Slave
@@ -161,17 +172,17 @@ void loop()
           waiting_for_interupt = 0;}
 
       measurement_t1 = micros();
-      
+      sipm_voltage = get_sipm_voltage(adc);
+      byte midi_Note = (byte)adc;
+      MIDI.sendNoteOn(127,midi_Note, MIDI_CHANNEL);
       if (MASTER == 1) {
           analogWrite(3, LED_BRIGHTNESS);
-          sipm_voltage = get_sipm_voltage(adc);
           last_sipm_voltage = sipm_voltage; 
-          Serial.println((String)muon_count + " " + time_stamp+ " " + adc+ " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC);}
+          Serial.println((String)muon_count + " " + time_stamp+ " " + adc+ " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC + " " + (String)midi_Note);}
   
       if (SLAVE == 1) {
           if (keep_pulse == 1) {   
               analogWrite(3, LED_BRIGHTNESS);
-              sipm_voltage = get_sipm_voltage(adc);
               last_sipm_voltage = sipm_voltage; 
               Serial.println((String)muon_count + " " + time_stamp+ " " + adc+ " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);}}
       
